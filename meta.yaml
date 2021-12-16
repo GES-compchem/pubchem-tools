@@ -1,0 +1,46 @@
+{% set name = "ghs-retriever" %}
+{% set version = "0.1.0a" %}
+
+
+
+package:
+  name: "{{ name|lower }}"
+  version: "{{ version }}"
+
+
+
+source:
+  url: https://github.com/GES-compchem/{{ name }}/archive/refs/tags/{{ version }}.zip
+
+build:
+  number: 0
+
+
+
+requirements:
+  host:
+    - python>=3.8
+    - pip
+    - setuptools
+    - numpy
+    - requests
+
+  run:
+    - python>=3.8
+    - requests
+
+
+about:
+  home: The package home page
+  license: UNKNOWN
+  license_family: OTHER
+  license_file:
+  summary: ""
+  doc_url:
+  dev_url:
+
+
+
+extra:
+  recipe-maintainers:
+    - GES-compchem
