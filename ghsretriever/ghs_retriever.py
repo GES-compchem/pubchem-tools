@@ -5,7 +5,7 @@ Created on Wed May 12 14:27:26 2021
 @author: mattia
 """
 
-import pugrest_tools as prt
+from ghsretriever import pugrest_tools as prt
 import requests
 import threading, queue
 import time
