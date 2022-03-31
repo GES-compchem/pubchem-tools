@@ -3,7 +3,7 @@ import setuptools
 
 setuptools.setup(
     name="pubchem-tools",
-    version="0.1.0a",
+    version="0.1.2a",
     description="",
     long_description="",
     packages=["pubchemtools"],
