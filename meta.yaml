@@ -1,4 +1,4 @@
-{% set name = "ghs-retriever" %}
+{% set name = "pubchem-tools" %}
 {% set version = "0.1.0a" %}
 
 
