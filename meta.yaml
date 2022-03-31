@@ -1,5 +1,5 @@
 {% set name = "pubchem-tools" %}
-{% set version = "0.1.0a" %}
+{% set version = "0.1.2a" %}
 
 
 
@@ -20,14 +20,14 @@ build:
 
 requirements:
   host:
-    - python>=3.8
+    - python>=3.9
     - pip
     - setuptools
     - numpy
     - requests
 
   run:
-    - python>=3.8
+    - python>=3.9
     - requests
 
 
