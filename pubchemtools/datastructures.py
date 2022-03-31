@@ -31,7 +31,39 @@ class GHSReferences:
     notifications: int = None
 
 
+@dataclass
+class UserProperties:
+    pass
+
+    @property
+    def count(self):
+        return len(self.__dict__)
+
+    def __setattr__(self, name, value, class_type=None):
+        if class_type is not Compound:
+            if name in self.__dict__:
+                super().__setattr__(name, value)
+            else:
+                print("To set a new property, use the add_property instance method")
+                return
+        else:
+            super().__setattr__(name, value)
+
+
 class Compound:
+    excluded_properties = ["_fetch_pairs"]
+    builtin_properties = [
+        "chemical_ids",
+        "_vendors_data",
+        "_vendors",
+        "molecule",
+        "_user_properties",
+        "compound_in_PUBCHEM",
+        "ghs_references",
+        "_fetch_pairs",
+        "_linked_libraries",
+    ]
+
     def __init__(
         self,
         InChIKey=None,
@@ -47,6 +79,10 @@ class Compound:
         self._vendors_data = None
         self._vendors = None
         self.molecule = None
+        self._user_properties = UserProperties()
+        self.compound_in_PUBCHEM = None  # will be set either to True or False
+        self.ghs_references = {}
+        self._linked_libraries = []
 
         # DEV: should be in try/except
         if sdf is not None:
@@ -73,8 +109,6 @@ class Compound:
 
         if autofetch:
             self.fetch_data()
-
-        self.compound_in_PUBCHEM = None  # will be set either to True or False
 
     def _chemical_ids_url(self):
 
@@ -139,7 +173,7 @@ class Compound:
             self.molecule = Chem.MolFromInchi(self.chemical_ids.InChI)
 
     def _set_vendors_pubresponse(self, response):
-        self.vendors_data = response["SourceCategories"]["Categories"][0]["Sources"]
+        self._vendors_data = response["SourceCategories"]["Categories"][0]["Sources"]
 
     def _set_ghs_pubresponse(self, response):
         # data from Pubchem
@@ -147,8 +181,6 @@ class Compound:
         ref_data = response["Record"]["Section"][0]["Section"][0]["Section"][0][
             "Information"
         ]
-
-        self.ghs_references = {}
 
         for source in ref_sources:
             ref_id = source["ReferenceNumber"]
@@ -203,7 +235,11 @@ class Compound:
 
     @property
     def vendors(self):
-        return {vendor_entry["SourceName"] for vendor_entry in self.vendors_data}
+        return {vendor_entry["SourceName"] for vendor_entry in self._vendors_data}
+
+    @property
+    def user_properties(self):
+        return self._user_properties
 
     def save(self, filename, file_format="sdf"):
         # DEV: should add restrains to arguments for file_format
@@ -219,14 +255,40 @@ class Compound:
 
         writer.write(molecule)
 
+    def add_property(self, property_name, property_value):
+        if property_name not in self._user_properties.__dict__:
+            try:
+                self._user_properties.__setattr__(
+                    property_name, property_value, type(self)
+                )
+                for library in self._linked_libraries:
+                    library._register_property(property_name)
+            except Exception as e:
+                print(str(e))
+        else:
+            self._user_properties.__setattr__(property_name, property_value, type(self))
+
+    def __setattr__(self, name, value):
+        if name not in self.__dict__ and name not in self.builtin_properties:
+            print(name, value)
+            print("To set a new property, use the add_property instance method")
+            return
+        else:
+            super().__setattr__(name, value)
+
 
 class Library:
     def __init__(self, compounds_list=None):
+
+        self._registered_properties = set()
 
         if compounds_list is None:
             self.compounds_list = []
         else:
             self.compounds_list = compounds_list
+
+        for compound in self.compounds_list:
+            compound._linked_libraries.append(self)
 
     def fetch_data(self, parallel=True):
         # for compound in self.compounds_list:
@@ -298,14 +360,22 @@ class Library:
             # avoids having replicated data in memory...
             if compound.molecule is not None:
                 molecule = copy.copy(compound.molecule)
-                molecule.SetProp("InChI", compound.chemical_ids.InChI)
-                molecule.SetProp("InChIKey", compound.chemical_ids.InChIKey)
-                molecule.SetProp("SMILES", compound.chemical_ids.SMILES)
-                molecule.SetProp("IUPAC", compound.chemical_ids.IUPAC)
 
-                sdf_out.write(molecule)
+            else:
+                molecule = Chem.rdchem.Mol()
+
+            molecule.SetProp("InChI", str(compound.chemical_ids.InChI))
+            molecule.SetProp("InChIKey", str(compound.chemical_ids.InChIKey))
+            molecule.SetProp("SMILES", str(compound.chemical_ids.SMILES))
+            molecule.SetProp("IUPAC", str(compound.chemical_ids.IUPAC))
+
+            sdf_out.write(molecule)
 
         sdf_out.close()
+
+    def _register_property(self, user_property):
+        print("registering property")
+        self._registered_properties.add(user_property)
 
     @property
     def in_pubchem(self):
