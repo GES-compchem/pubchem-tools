@@ -110,12 +110,12 @@ class Compound:
         if autofetch:
             self.fetch_data()
 
-    def _chemical_ids_url(self):
-
-        # DEV: should add a try/except block here
         if self.molecule:
             self.chemical_ids.InChIKey = Chem.MolToInchiKey(self.molecule)
 
+    def _chemical_ids_url(self):
+
+        # DEV: should add a try/except block here
         chosen = None
         post = None
 
@@ -378,6 +378,19 @@ class Library:
             molecule.SetProp("InChIKey", str(compound.chemical_ids.InChIKey))
             molecule.SetProp("SMILES", str(compound.chemical_ids.SMILES))
             molecule.SetProp("IUPAC", str(compound.chemical_ids.IUPAC))
+
+            for property_name in self._registered_properties:
+                try:
+                    property_value = compound._user_properties.__getattribute__(
+                        property_name
+                    )
+                except AttributeError as e:
+                    # print("Attribute error: ", str(e))
+                    property_value = None
+                except Exception as e:
+                    print(str(e))
+
+                molecule.SetProp(property_name, str(property_value))
 
             sdf_out.write(molecule)
 
