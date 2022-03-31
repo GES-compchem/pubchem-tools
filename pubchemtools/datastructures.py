@@ -340,7 +340,17 @@ class Library:
         print(f"Elapsed: ", time.time() - initial_time)
 
     def add(self, compounds_list):
-        self.compounds_list.append(compounds_list)
+        if type(compounds_list) is not list:
+            raise TypeError(
+                f"add method requires a list as input, while {type(compounds_list)} was provided."
+            )
+            return
+
+        self.compounds_list.extend(compounds_list)
+
+        for compound in compounds_list:
+            for user_property in compound._user_properties.__dict__:
+                self._register_property(user_property)
 
     def read(self, sdf_filepath):
         if sdf_filepath is not None:
@@ -374,7 +384,6 @@ class Library:
         sdf_out.close()
 
     def _register_property(self, user_property):
-        print("registering property")
         self._registered_properties.add(user_property)
 
     @property
