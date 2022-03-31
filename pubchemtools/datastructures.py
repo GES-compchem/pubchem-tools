@@ -270,8 +270,11 @@ class Compound:
 
     def __setattr__(self, name, value):
         if name not in self.__dict__ and name not in self.builtin_properties:
-            print(name, value)
-            print("To set a new property, use the add_property instance method")
+            raise AttributeError(
+                f"Assigning a property with a = operator is forbidden. Please use the add_property instance method instead. "
+                + "\n"
+                + f' --> compound.add_property("{name}", {value})',
+            )
             return
         else:
             super().__setattr__(name, value)
