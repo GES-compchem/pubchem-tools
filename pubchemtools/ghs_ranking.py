@@ -367,4 +367,3 @@ class GES002(EmptyRanking):
         self.ranking["H413"][0] = 2
         self.ranking["H420"][0] = 3
 
-GES002_instance = GES002()

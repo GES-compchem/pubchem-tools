@@ -9,7 +9,7 @@ Created on Mon Mar 28 11:53:11 2022
 import copy
 from dataclasses import dataclass
 from pubchemtools.communication import HTTP_request, PUBCHEM_load_balancer
-from pubchemtools.ghs_ranking import GES002_instance
+from pubchemtools.ghs_ranking import GES002
 from rdkit import Chem
 import time
 
@@ -52,6 +52,8 @@ class UserProperties:
             
     def __repr__(self):
         return str(self.__dict__)
+
+GES002_instance = GES002()
 
 
 class Compound:
