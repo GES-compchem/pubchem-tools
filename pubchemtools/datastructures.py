@@ -9,6 +9,7 @@ Created on Mon Mar 28 11:53:11 2022
 import copy
 from dataclasses import dataclass
 from pubchemtools.communication import HTTP_request, PUBCHEM_load_balancer
+from pubchemtools.ghs_ranking import GES002_instance
 from rdkit import Chem
 import time
 
@@ -33,7 +34,7 @@ class GHSReferences:
 
 @dataclass
 class UserProperties:
-    pass
+    "Dataclass containing user properties"
 
     @property
     def count(self):
@@ -48,6 +49,9 @@ class UserProperties:
                 return
         else:
             super().__setattr__(name, value)
+            
+    def __repr__(self):
+        return str(self.__dict__)
 
 
 class Compound:
@@ -218,6 +222,14 @@ class Compound:
                 entry = entry.split()
                 self.ghs_references[ref_id].companies = int(entry[5])
                 self.ghs_references[ref_id].notifications = int(entry[8])
+        
+        self._calculate_ghs_ranking()
+                
+    def _calculate_ghs_ranking(self, ranking_profile=GES002_instance):
+        ranking_name = type(ranking_profile).__name__+"_GHS_ranking"
+        score = ranking_profile._rank(self.ghs_references)
+        
+        self.add_property(ranking_name, score)
 
     def fetch_data(self):
         # Chemical IDs
@@ -293,7 +305,7 @@ class Library:
         for compound in self.compounds_list:
             compound._linked_libraries.append(self)
 
-    def fetch_data(self, parallel=True):
+    def fetch_data(self, parallel=True, attempts=3):
         # for compound in self.compounds_list:
         #     # using function as dict key to pair url request and setter!
         #     for url_fetcher, setter in compound._fetch_pairs.items():
@@ -311,7 +323,7 @@ class Library:
             cid_requests.append(compound._chemical_ids_url)
 
         # lets grab the chemical IDs from pubchem...
-        data = PUBCHEM_load_balancer(cid_requests)
+        data = PUBCHEM_load_balancer(cid_requests, attempts)
 
         # ... and set them in each compound object
         for compound in self.compounds_list:
@@ -329,7 +341,7 @@ class Library:
                 if compound.compound_in_PUBCHEM:
                     url_requests.append(url_fetcher)
 
-        data = PUBCHEM_load_balancer(url_requests)
+        data = PUBCHEM_load_balancer(url_requests, attempts)
 
         for compound in self.compounds_list:
             keys = compound._fetch_pairs.keys()

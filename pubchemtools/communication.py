@@ -23,8 +23,9 @@ def HTTP_request(url, post=None, other=None, attempts=3, queue=None):
     for i in range(1, attempts + 1):  # try three times
 
         try:
-            response = session.post(url, data=post)
+            response = session.post(url, data=post, timeout=2)
             # If the response was successful, no Exception will be raised
+            #print(response.headers)
             response.raise_for_status()
 
         # DEV: should be completed with the full error list from PUBCHEM
@@ -33,11 +34,12 @@ def HTTP_request(url, post=None, other=None, attempts=3, queue=None):
                 # print(f"No GHS data found for compound CID {other}")
                 return None
 
-            if "PUGREST.NotFound" in str(http_err):
+            elif "PUGREST.NotFound" in str(http_err):
                 # print("PUGREST.NotFound")
                 return None
 
-            # print(str(http_err))
+            else:
+                print(str(http_err))
             break
             # print(f"HTTP error occurred: {http_err}")  # Python 3.6
         except Exception as err:
@@ -54,7 +56,7 @@ def HTTP_request(url, post=None, other=None, attempts=3, queue=None):
         print(f"Three attempts have failed for {url}, {post}")
 
 
-def PUBCHEM_load_balancer(url_requests_list, total_urls=0):
+def PUBCHEM_load_balancer(url_requests_list, total_urls=0, attempts=3):
 
     timings = [time.time()]
     initial_size = len(url_requests_list)
@@ -108,7 +110,7 @@ def PUBCHEM_load_balancer(url_requests_list, total_urls=0):
                 url, post = url_request()
                 # print("url: ", url)
                 worker = threading.Thread(
-                    target=HTTP_request, args=[url, post, url_request, 3, results_queue]
+                    target=HTTP_request, args=[url, post, url_request, attempts, results_queue]
                 )
                 new_threads.append(worker)
                 worker.start()
