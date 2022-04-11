@@ -352,16 +352,22 @@ class Library:
         self.compounds_list.extend(compounds_list)
 
         for compound in compounds_list:
+            compound._linked_libraries.append(self)
+            
             for user_property in compound._user_properties.__dict__:
                 self._register_property(user_property)
+                
 
     def read(self, sdf_filepath):
-        if sdf_filepath is not None:
-            suppl = Chem.SDMolSupplier(sdf_filepath)
-            # suppl = Chem.MultithreadedSDMolSupplier(sdf_filepath)
+        suppl = Chem.SDMolSupplier(sdf_filepath)
 
-            for mol in suppl:
-                self.compounds_list.append(Compound(rdkitmol=mol, autofetch=False))
+        for mol in suppl:
+            self.compounds_list.append(Compound(rdkitmol=mol, autofetch=False))
+            
+        for compound in self.compounds_list:
+            compound._linked_libraries.append(self)
+            
+        
 
     def save(self, filename, file_format="sdf"):
 
