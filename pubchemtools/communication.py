@@ -38,16 +38,15 @@ def HTTP_request(url, post=None, other=None, attempts=3, queue=None):
                 # print("PUGREST.NotFound")
                 return None
             elif "PUGREST.ServerBusy" in str(http_err):
-                # print("PUGREST.NotFound")
+                print(f"\n PUBCHEM HTTP 503 error \"PUGREST.ServerBusy\" for url:\n  {url} \n Retrying: {i}/{attempts} attempts\n")
                 time.sleep(1)
-
             else:
                 print(str(http_err))
             break
             # print(f"HTTP error occurred: {http_err}")  # Python 3.6
         except Exception as err:
-            # print(f"Other error occurred: {err}")  # Python 3.6
-            print(f"\n Connection error. Retrying {other} - Attempt {i}/3")
+            print(f"Other error occurred: {err}")  # Python 3.6
+            #print(f"\n Connection error. Retrying {other} - Attempt {i}/3")
             time.sleep(1)
         else:
             if queue is not None:
