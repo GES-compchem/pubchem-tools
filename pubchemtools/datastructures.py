@@ -16,6 +16,9 @@ import time
 
 @dataclass
 class ChemicalIDs:
+    """
+    """
+    
     InChIKey: str = None
     InChI: str = None
     IUPAC: str = None
@@ -57,6 +60,7 @@ GES002_instance = GES002()
 
 
 class Compound:
+    
     excluded_properties = ["_fetch_pairs"]
     builtin_properties = [
         "chemical_ids",
@@ -81,6 +85,51 @@ class Compound:
         rdkitmol=None,
         autofetch=True,
     ):
+        """
+        Initializer of the Compound class.
+        
+        Depending on the user input, the istance might be initialize either via
+        a chemical identifier or a structure file. In the first case, 
+        chemical_IDs will be set to the user input, and the molecule attribute
+        will be left empty. If a structure file is provided through the sdf
+        argument, an attempt to generate the InChI-Key through RDkit will be
+        performed (though it might not always succeed).
+
+        Parameters
+        ----------
+        InChIKey : str, optional
+            InChI-Key associated to the compound. The default is None.
+        InChI : str, optional
+            InChI representation of the compound. The default is None.
+        SMILES : str, optional
+            SMILES representation of the compound. The default is None.
+        IUPAC : str, optional
+            Standard IUPAC chemical name of the compound. The default is None.
+        sdf : str, optional
+            Filepath of an SDF file containing a single structure. If an SDF
+            file with multiple molecules is provided, only the first one will 
+            be considered. The molecular structure will be stored as an rdkit
+            mol object. The default is None.
+        mol : str, optional
+            Filepath of a MOL file. The molecular structure will be stored as an rdkit
+            mol object. The default is None.
+        rdkitmol : rdkit.Chem.rdchem.Mol, optional
+            RDKit molecule object. The default is None.
+        autofetch : TYPE, optional
+            If set to True, an attempt to retrieve chemical IDs, vendors and GHS
+            data will be performed upon instance initialization. The default is True.
+
+
+        Raises
+        ------
+        ValueError
+            DESCRIPTION.
+
+        Returns
+        -------
+        None.
+
+        """
         # Instance attributes
         self._vendors_data = None
         self._vendors = None

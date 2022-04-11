@@ -37,6 +37,9 @@ def HTTP_request(url, post=None, other=None, attempts=3, queue=None):
             elif "PUGREST.NotFound" in str(http_err):
                 # print("PUGREST.NotFound")
                 return None
+            elif "PUGREST.ServerBusy" in str(http_err):
+                # print("PUGREST.NotFound")
+                time.sleep(1)
 
             else:
                 print(str(http_err))
