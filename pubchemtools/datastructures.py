@@ -9,7 +9,7 @@ Created on Mon Mar 28 11:53:11 2022
 import copy
 from dataclasses import dataclass
 import time
-from typing import Any, Type, Callable, Optional, TypeVar
+from typing import Any, Type, Callable, Optional
 from pubchemtools.communication import HTTP_request, PUBCHEM_load_balancer
 from pubchemtools.ghs_ranking import EmptyRanking, GES002
 import rdkit
@@ -130,8 +130,7 @@ class UserProperties:
         return str(self.__dict__)
 
 
-#RegProfile = TypeVar('RegProfile', bound=EmptyRanking)
-GES002_instance: GES002 = GES002()
+GES002_inst: GES002 = GES002()
 """GES002 : module level instance of GES002 regulatory profile
 
    It will be used by all istances of the Compound class to compute the GHS
@@ -231,10 +230,9 @@ class Compound:
         autofetch: Optional[bool] = True,
     ) -> None:
         """Initialize the Compound class."""
-
         # Instance attributes
-        self._vendors_data: Optional[list[dict]] = None
-        self._vendors: Optional[list[str]] = None  # DEV: implement as a property
+        self._vendors_data: list[dict]
+        self._vendors: Optional[set[str]] = None  # DEV: implement as a property
         self.molecule: Optional[rdkit.Chem.rdchem.Mol] = None
         self._user_properties: UserProperties = UserProperties()  # implement as a property
         self.compound_in_PUBCHEM: Optional[bool] = None
@@ -364,7 +362,8 @@ class Compound:
 
         if response is None:
             print(
-                f"No Chemical IDs were found for {list(chosen.keys())[0]}: {list(chosen.values())[0]}"
+                f"No Chemical IDs were found for {list(chosen.keys())[0]}: " +
+                "{list(chosen.values())[0]}"
             )
         else:
             # we merge user input with chemical ids retrieved by pubchem
@@ -425,7 +424,7 @@ class Compound:
 
         source: dict
 
-        # First, collect the referenced ids and source from the ["Record"]["Reference"] header
+        # Collect the referenced ids and source from the ["Record"]["Reference"] header
         for source in ref_sources:
             ref_id: int = source["ReferenceNumber"]
             source_name: str = source["SourceName"]
@@ -471,9 +470,9 @@ class Compound:
                 self.ghs_references[ref_id].companies = int(splitted_entry[5])
                 self.ghs_references[ref_id].notifications = int(splitted_entry[8])
 
-        self._calculate_ghs_ranking()  # at last...
+        self.calculate_ghs_ranking()  # at last...
 
-    def _calculate_ghs_ranking(self, ranking_profile: EmptyRanking = GES002_instance) -> None:
+    def calculate_ghs_ranking(self, ranking_profile: EmptyRanking = GES002_inst) -> None:
         """Compute the compound GHS ranking.
 
         Ranking is calculated using a user defined regulatory profile. Each profile contains
@@ -496,8 +495,23 @@ class Compound:
 
         self.add_property(ranking_name, score)
 
-    def fetch_data(self):
+    def fetch_data(self) -> None:
+        """Retrieve data from Pubchem (single thread I/O).
+
+        The function generates the url and post data and submits them to the Pubchem REST
+        API. Then it retrieve Pubchem results and assign the results to the respective
+        property.
+
+        Returns
+        -------
+        None
+
+        """
         # Chemical IDs
+        url: str
+        post: Optional[str]
+        response: Any  # it's a JSON
+
         url, post = self._chemical_ids_url()
         response = HTTP_request(url, post)
         self._set_chemical_ids_pubresponse(response)
@@ -511,16 +525,53 @@ class Compound:
         self._set_ghs_pubresponse(response)
 
     @property
-    def vendors(self):
+    def vendors(self) -> set[str]:
+        """Return a list of vendors of the compound.
+
+        Returns
+        -------
+        set[str]
+            A list of the vendors names of the compound.
+
+        """
+        if not hasattr(self, "_vendors_data"):
+            return set()
+
         return {vendor_entry["SourceName"] for vendor_entry in self._vendors_data}
 
     @property
-    def user_properties(self):
+    def user_properties(self) -> UserProperties:
+        """Return all user defined properties.
+
+        Returns
+        -------
+        UserProperties
+            A dataclass containing all user defined properties.
+
+        """
         return self._user_properties
 
-    def save(self, filename, file_format="sdf"):
+    def save(self, filename: str, file_format: str = "sdf") -> None:
+        """Save the molecule to a file.
+
+        Parameters
+        ----------
+        filename : str
+            Filename.
+        file_format : str, optional
+            Format of output file. The default is "sdf".
+
+        Returns
+        -------
+        None.
+
+        """
         # DEV: should add restrains to arguments for file_format
-        writer = Chem.SDWriter(filename + "." + file_format)
+        if self.molecule is None:
+            raise UnboundLocalError("No molecule object is present in Compound. " +
+                                    "Cannot save to file.")
+
+        writer: Chem.SDWriter = Chem.SDWriter(filename + "." + file_format)
 
         molecule = copy.copy(self.molecule)
         molecule.SetProp("InChI", self.chemical_ids.InChI)
@@ -532,18 +583,64 @@ class Compound:
 
         writer.write(molecule)
 
-    def add_property(self, property_name, property_value):
+    def add_property(self, property_name: str, property_value: Any) -> None:
+        """Add a property to the Compound user_properties Dataclass instance.
+
+        The use of the add_property method prevents the user from inadvertly polluting
+        the attributes of the Compound instances.
+
+        Parameters
+        ----------
+        property_name : str
+            Name of the user-defined property.
+        property_value : Any
+            Value of the user-defined property.
+
+        Returns
+        -------
+        None
+
+        """
         if property_name not in self._user_properties.__dict__:
             self._user_properties.__setattr__(
                 property_name, property_value, type(self)
             )
+
+            # after adding the property to the compound instance, register it to all the
+            # libraries containing the compound
+            # an event based system would be better, but for now this will suffice
             for library in self._linked_libraries:
                 library._register_property(property_name)
         else:
+            # if the property already exists in the Compound instance, then modify its value
             self._user_properties.__setattr__(
                 property_name, property_value, type(self))
 
-    def __setattr__(self, name, value):
+    def __setattr__(self, name: str, value: Any) -> None:
+        """Prevent user to edit Compound instance properties.
+
+        The function still allows users to modify built_in properties such as GHS data,
+        vendors etc. This will be prevented in future releases through implementing data
+        access through property decorators.
+
+        Parameters
+        ----------
+        name : str
+            Name of the property to be added.
+        value : Any
+            Value of the property to be added.
+
+        Raises
+        ------
+        AttributeError
+            AttributeError is raised if the variable does not alredy exists in the Compound
+            instance or if is not among the builtin properties defined in the class
+            attribute.
+
+        Returns
+        -------
+        None
+        """
         if name not in self.__dict__ and name not in self.builtin_properties:
             raise AttributeError(
                 "Assigning a property with a = operator is forbidden. Please use the add_property instance method instead. "
