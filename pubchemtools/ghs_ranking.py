@@ -9,7 +9,7 @@ Created on Fri May 14 09:34:26 2021
 
 class EmptyRanking:
     def __init__(self):
-        self.source : str
+        self.source: str
         self.ranking = {
             "H200": [0, "Unstable explosive"],
             "H201": [0, "Explosive; mass explosion hazard"],
@@ -139,11 +139,11 @@ class EmptyRanking:
         scores = {}
 
         for compound in compound_keys:
-            scores[compound] = self._rank(references[compound])
+            scores[compound] = self.rank(references[compound])
 
         return scores
 
-    def _rank(self, reference):
+    def rank(self, reference):
         ref_keys = list(reference.keys())
 
         # if no hazard phrase is present for the compound, return None
@@ -176,7 +176,7 @@ class EmptyRanking:
         score = 0
 
         for code in hazard_codes:
-            if code is None: # for non hazardous compounds
+            if code == "Not Hazardous":  # for non hazardous compounds
                 score += 0
             else:
                 score += self.ranking[code][0]
@@ -274,7 +274,8 @@ class GES001(EmptyRanking):
         self.ranking["H412"][0] = 3
         self.ranking["H413"][0] = 3
         self.ranking["H420"][0] = 4
-        
+
+
 class GES002(EmptyRanking):
     def __init__(self):
         super().__init__()
@@ -288,7 +289,7 @@ class GES002(EmptyRanking):
         self.ranking["H206"][0] = 1000
         self.ranking["H207"][0] = 1000
         self.ranking["H208"][0] = 5
-        self.ranking["H220"][0] = 5 # e.g. hydrogen
+        self.ranking["H220"][0] = 5  # e.g. hydrogen
         self.ranking["H221"][0] = 5
         self.ranking["H222"][0] = 1000
         self.ranking["H223"][0] = 5
@@ -297,7 +298,7 @@ class GES002(EmptyRanking):
         self.ranking["H226"][0] = 1000
         self.ranking["H227"][0] = 5
         self.ranking["H228"][0] = 1000
-        self.ranking["H229"][0] = 3 
+        self.ranking["H229"][0] = 3
         self.ranking["H230"][0] = 5
         self.ranking["H231"][0] = 5
         self.ranking["H232"][0] = 1000
@@ -328,7 +329,7 @@ class GES002(EmptyRanking):
         self.ranking["H311"][0] = 1000
         self.ranking["H312"][0] = 5
         self.ranking["H313"][0] = 4
-        self.ranking["H314"][0] = 5 # like NaOH or H2SO4
+        self.ranking["H314"][0] = 5  # like NaOH or H2SO4
         self.ranking["H315"][0] = 5
         self.ranking["H316"][0] = 4
         self.ranking["H317"][0] = 4
@@ -366,4 +367,3 @@ class GES002(EmptyRanking):
         self.ranking["H412"][0] = 2
         self.ranking["H413"][0] = 2
         self.ranking["H420"][0] = 3
-

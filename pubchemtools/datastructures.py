@@ -8,43 +8,106 @@ Created on Mon Mar 28 11:53:11 2022
 
 import copy
 from dataclasses import dataclass
-from pubchemtools.communication import HTTP_request, PUBCHEM_load_balancer
-from pubchemtools.ghs_ranking import GES002
-from rdkit import Chem
 import time
+from typing import Any, Type, Callable, Optional, TypeVar
+from pubchemtools.communication import HTTP_request, PUBCHEM_load_balancer
+from pubchemtools.ghs_ranking import EmptyRanking, GES002
+import rdkit
+from rdkit import Chem
 
 
 @dataclass
 class ChemicalIDs:
+    """Contains textual chemical identifiers of a Molecule.
+
+    A dataclass that contains all the chemical identifiers for a given molecule.
+
+    Attributes
+    ----------
+    InChIKey : str, optional
+        InChI-Key associated to the compound. The default is None.
+    InChI : str, optional
+        InChI representation of the compound. The default is None.
+    SMILES : str, optional
+        SMILES representation of the compound. The default is None.
+    IUPAC : str, optional
+        Standard IUPAC chemical name of the compound. The default is None.
+    pubchem_cid : int
+        Pubchem Compound IDentifier (CID)
     """
-    """
-    
-    InChIKey: str = None
-    InChI: str = None
-    IUPAC: str = None
-    SMILES: str = None
-    PUBCHEM_CID: int = None
+
+    InChIKey: Optional[str] = None
+    InChI: Optional[str] = None
+    IUPAC: Optional[str] = None
+    SMILES: Optional[str] = None
+    pubchem_cid: Optional[int] = None
 
 
 @dataclass
 class GHSReferences:
-    reference_id: str = None
-    source_name: str = None
-    hazard_codes: list = None
-    companies: int = None
-    notifications: int = None
+    """Contains regulatory data fetched from PubChem database.
+
+    The companies and notification fields are valid only for ECHA references.
+
+    Attributes
+    ----------
+    reference_id : int, optional
+        Numerical ID of the regulatory reference assigned by PubChem
+    source_name : str, optional
+        Name of the entity that reported the regulatory profile (e.g. ECHA)
+    hazard_codes : [str], optional
+        Hazard P(recautionary) statements of the molecule
+    companies : int, optional
+        Number of companies that provided a notification to ECHA
+    notifications : int, optional
+        Total number of companies that provided the same notification to ECHA
+    """
+
+    reference_id: Optional[int] = None
+    source_name: Optional[str] = None
+    hazard_codes: Optional[list[str]] = None
+    companies: Optional[int] = None
+    notifications: Optional[int] = None
 
 
 @dataclass
 class UserProperties:
-    "Dataclass containing user properties"
+    """Dataclass containing user properties."""
 
     @property
     def count(self):
+        """Return the number of the compound user properties.
+
+        Returns
+        -------
+        int
+            Number of user properties.
+        """
         return len(self.__dict__)
 
-    def __setattr__(self, name, value, class_type=None):
-        if class_type is not Compound:
+    def __setattr__(self, name: str, value: Any, class_type: Type = object) -> None:
+        """Modification of __setattr__ to prevent user to add a new attribute.
+
+        This modification to the __setattr__ method forces the user to use
+        the add_property() method of the Compound class to add a new property.
+
+        Parameters
+        ----------
+        name : str
+            Name of the variable.
+        value : typing.Any
+            Value of the variable.
+        class_type : typing.ClassVar, optional
+            DESCRIPTION. The default is None.
+
+        Returns
+        -------
+        None.
+
+        """
+        # Forbids creating a new property through direct variable assignation
+        # except the variable already exists in UserProperties
+        if class_type is not Compound:  # runs only if called from Compound instance
             if name in self.__dict__:
                 super().__setattr__(name, value)
             else:
@@ -52,15 +115,97 @@ class UserProperties:
                 return
         else:
             super().__setattr__(name, value)
-            
+
     def __repr__(self):
+        """Return a string representation of the Dataclass.
+
+        Returns
+        -------
+        str
+            String representation of the dataclass.
+
+        """
+        # For some reason, the modification of the __setattr__ method breaks
+        # dataclasses automatic __repr__, so I'm reimplementing it
         return str(self.__dict__)
 
-GES002_instance = GES002()
+
+#RegProfile = TypeVar('RegProfile', bound=EmptyRanking)
+GES002_instance: GES002 = GES002()
+"""GES002 : module level instance of GES002 regulatory profile
+
+   It will be used by all istances of the Compound class to compute the GHS
+   ranking of the molecule using ECHA hazard phrases.
+"""
 
 
 class Compound:
-    
+    """Representation of a molecule and its related data.
+
+    Depending on the user input, the istance might be initialized either via
+    a chemical identifier or structure data. In the first case,
+    chemical_IDs will be set to the user input, and the molecule attribute
+    will be left empty. If structure data is provided through the sdf/mol
+    filepath argument or a rdkit mol object, an attempt to generate the InChI-Key through
+    RDkit will be performed (though it might not always succeed).
+
+    Parameters
+    ----------
+    InChIKey : str, optional
+        InChI-Key associated to the compound. The default is None.
+    InChI : str, optional
+        InChI representation of the compound. The default is None.
+    SMILES : str, optional
+        SMILES representation of the compound. The default is None.
+    IUPAC : str, optional
+        Standard IUPAC chemical name of the compound. The default is None.
+    sdf : str, optional
+        Filepath of an SDF file containing a single structure. If an SDF
+        file with multiple molecules is provided, only the first one will
+        be considered. The molecular structure will be stored as an rdkit
+        mol object. The default is None.
+    mol : str, optional
+        Filepath of a MOL file. The molecular structure will be stored as an rdkit
+        mol object. The default is None.
+    rdkitmol : rdkit.Chem.rdchem.Mol, optional
+        RDKit molecule object. The default is None.
+    autofetch : TYPE, optional
+        If set to True, an attempt to retrieve chemical IDs, vendors and GHS
+        data will be performed upon instance initialization. The default is True.
+
+    Attributes
+    ----------
+    excluded_properties : [str]
+        (class attribute) List of attributes that won't be written to a file if the compound
+        is exported through a library instance.
+
+    builtin_properties : [str]
+        (class attribute) List of attributes that will be defined in the __init__ method and
+        won't be considered as a user property.
+    vendors : [str]
+        List of vendors supplying the compound. None if no data was fetched through Pubchem.
+    molecule : rdkit.Chem.rdchem.Mol
+        rdkit mol object representing the compound. None if structure data is not available.
+    compound_in_PUBCHEm : bool
+        If True, the compound was found on Pubchem. Defaults to None if no Pubchem search
+        has been performed.
+    ghs_references : dict
+        Contains one or more set of regulatory data. Data is saved as GHSReferences
+        dataclass.
+    user_properties : UserProperties
+        Dataclass containing user properties that have been added to the compound instance
+        through the add_property method.
+
+    Raises
+    ------
+    ValueError
+        If no input parameter is given upon object creation, raises ValueError.
+
+    Returns
+    -------
+    None.
+    """
+
     excluded_properties = ["_fetch_pairs"]
     builtin_properties = [
         "chemical_ids",
@@ -76,72 +221,31 @@ class Compound:
 
     def __init__(
         self,
-        InChIKey=None,
-        InChI=None,
-        SMILES=None,
-        IUPAC=None,
-        sdf=None,
-        mol=None,
-        rdkitmol=None,
-        autofetch=True,
-    ):
-        """
-        Initializer of the Compound class.
-        
-        Depending on the user input, the istance might be initialize either via
-        a chemical identifier or a structure file. In the first case, 
-        chemical_IDs will be set to the user input, and the molecule attribute
-        will be left empty. If a structure file is provided through the sdf
-        argument, an attempt to generate the InChI-Key through RDkit will be
-        performed (though it might not always succeed).
+        InChIKey: Optional[str] = None,
+        InChI: Optional[str] = None,
+        SMILES: Optional[str] = None,
+        IUPAC: Optional[str] = None,
+        sdf: Optional[str] = None,
+        mol: Optional[str] = None,
+        rdkitmol: Optional[rdkit.Chem.rdchem.Mol] = None,
+        autofetch: Optional[bool] = True,
+    ) -> None:
+        """Initialize the Compound class."""
 
-        Parameters
-        ----------
-        InChIKey : str, optional
-            InChI-Key associated to the compound. The default is None.
-        InChI : str, optional
-            InChI representation of the compound. The default is None.
-        SMILES : str, optional
-            SMILES representation of the compound. The default is None.
-        IUPAC : str, optional
-            Standard IUPAC chemical name of the compound. The default is None.
-        sdf : str, optional
-            Filepath of an SDF file containing a single structure. If an SDF
-            file with multiple molecules is provided, only the first one will 
-            be considered. The molecular structure will be stored as an rdkit
-            mol object. The default is None.
-        mol : str, optional
-            Filepath of a MOL file. The molecular structure will be stored as an rdkit
-            mol object. The default is None.
-        rdkitmol : rdkit.Chem.rdchem.Mol, optional
-            RDKit molecule object. The default is None.
-        autofetch : TYPE, optional
-            If set to True, an attempt to retrieve chemical IDs, vendors and GHS
-            data will be performed upon instance initialization. The default is True.
-
-
-        Raises
-        ------
-        ValueError
-            DESCRIPTION.
-
-        Returns
-        -------
-        None.
-
-        """
         # Instance attributes
-        self._vendors_data = None
-        self._vendors = None
-        self.molecule = None
-        self._user_properties = UserProperties()
-        self.compound_in_PUBCHEM = None  # will be set either to True or False
-        self.ghs_references = {}
-        self._linked_libraries = []
+        self._vendors_data: Optional[list[dict]] = None
+        self._vendors: Optional[list[str]] = None  # DEV: implement as a property
+        self.molecule: Optional[rdkit.Chem.rdchem.Mol] = None
+        self._user_properties: UserProperties = UserProperties()  # implement as a property
+        self.compound_in_PUBCHEM: Optional[bool] = None
+        self.ghs_references: dict[int, GHSReferences] = {}
+        self._linked_libraries: list[Library] = []
+        self.chemical_ids: ChemicalIDs
 
         # DEV: should be in try/except
+        # Initialize differently depending on user input
         if sdf is not None:
-            suppl = Chem.SDMolSupplier(sdf)
+            suppl: rdkit.Chem.SDMolSupplier = Chem.SDMolSupplier(sdf)
             self.molecule = suppl[0]
         if mol is not None:
             self.molecule = Chem.MolFromMolFile(mol)
@@ -157,7 +261,10 @@ class Compound:
                 "Compound object initialization requires at least one argument"
             )
 
-        self._fetch_pairs = {
+        # Couples functions that supply Pubchem url to functions that set the data returned
+        # by Pubchem. This allow to fetch Pubchem data all in one go and worry about
+        # setting the output to the correct attributes later
+        self._fetch_pairs: dict[Callable, Callable] = {
             self._vendors_url: self._set_vendors_pubresponse,
             self._ghs_url: self._set_ghs_pubresponse,
         }
@@ -165,50 +272,94 @@ class Compound:
         if autofetch:
             self.fetch_data()
 
+        # Without an InChIKey (or other chemical IDs) Pubchem search won't work
         if self.molecule:
             self.chemical_ids.InChIKey = Chem.MolToInchiKey(self.molecule)
 
-    def _chemical_ids_url(self):
+    def _chemical_ids_url(self) -> tuple[str, Optional[str]]:
+        """Generate Pubchem REST url to retrieve InChI,InChiKey, SMILES,IUPACName.
 
+        Returns
+        -------
+        tuple[str, str]
+            Pubchem REST url and post data.
+
+        """
         # DEV: should add a try/except block here
-        chosen = None
-        post = None
+        url: str
+        post: Optional[str] = None  # None in case no post data is needed e.g. InChIKey
+        # DEV: also SMILES and IUPAC should be implemented with post as they can get long
 
         if self.chemical_ids.InChIKey is not None:
-            chosen = {"InChIKey": self.chemical_ids.InChIKey}
             url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/inchikey/{self.chemical_ids.InChIKey}/property/InChI,IsomericSMILES,IUPACName/JSON"
         elif self.chemical_ids.InChI is not None:
-            chosen = {"InChI": self.chemical_ids.InChI}
-            url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/inchi/property/InChIKey,IsomericSMILES,IUPACName/JSON"
+            url = "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/inchi/property/InChIKey,IsomericSMILES,IUPACName/JSON"
             post = f"inchi={self.chemical_ids.InChI}"
         elif self.chemical_ids.SMILES is not None:
-            chosen = {"IsomericSMILES": self.chemical_ids.SMILES}
             url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/{self.chemical_ids.SMILES}/property/InChIKey,InChI,IUPACName/JSON"
         elif self.chemical_ids.IUPAC is not None:
-            chosen = {"IUPACName": self.chemical_ids.IUPAC}
             url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/iupacname/{self.chemical_ids.IUPAC}/property/InChIKey,InChI,SMILES/JSON"
 
         return url, post
 
-    def _vendors_url(self):
-        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/categories/compound/{self.chemical_ids.PUBCHEM_CID}/JSON/"
+    def _vendors_url(self) -> tuple[str, Optional[str]]:
+        """Generate Pubchem REST url to retrieve vendors data.
+
+        Returns
+        -------
+        tuple[str, str]
+            Pubchem REST url and post data.
+
+        """
+        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/categories/compound/{self.chemical_ids.pubchem_cid}/JSON/"
         post = None
         return url, post
 
-    def _ghs_url(self):
-        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data/compound/{self.chemical_ids.PUBCHEM_CID}/JSON/?heading=GHS+Classification"
+    def _ghs_url(self) -> tuple[str, Optional[str]]:
+        """Generate Pubchem REST url to retrieve GHS data.
+
+        Returns
+        -------
+        tuple[str, str]
+            Pubchem REST url and post data.
+
+        """
+        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data/compound/{self.chemical_ids.pubchem_cid}/JSON/?heading=GHS+Classification"
         post = None
         return url, post
 
-    def _set_chemical_ids_pubresponse(self, response):
-        identifiers = self.chemical_ids.__dict__
+    def _set_chemical_ids_pubresponse(self, response: Any) -> None:
+        """Set chemical IDs from data returned by Pubchem.
+
+        First the function identifies which was the input chemical ID that was supplied to
+        the Compound constructor, then proceeds setting the other missing chemical IDs
+        retrieved by Pubchem. Note: SMILES representation is stored, within the ChemicalIDs
+        dataclass, in a attribute named "SMILES". Since the function is checking against
+        attribute names to identified which ID was supplied by the user, and since Pubchem
+        has two SMILES repr. (canonical and isomeric), we need to rename the identifier to
+        correctly retrieve PubChem SMILES.
+
+        Parameters
+        ----------
+        response : Any
+            Contains the Pubchem REST API response in JSON format.
+
+        Returns
+        -------
+        None.
+
+        """
+        identifiers: dict[str, str] = self.chemical_ids.__dict__
+        chosen: dict[str, str]
 
         # relies on definition order of dict - may be unreliable depending
         # on python base library implementation
         for identifier, value in identifiers.items():
             if value is not None:
-                if identifier == "SMILES":
-                    identifier = "IsomericSMILES"  # Pubchem distinguishes between isomeric and canonical SMILES
+                if identifier == "SMILES":  # in case we initialized Compound with a SMILES
+                    # Pubchem distinguishes between isomeric and canonical SMILES. We always
+                    # retrieve the Isomeric, so we set here the right label to match data
+                    identifier = "IsomericSMILES"
                 chosen = {identifier: value}
 
         if response is None:
@@ -216,70 +367,133 @@ class Compound:
                 f"No Chemical IDs were found for {list(chosen.keys())[0]}: {list(chosen.values())[0]}"
             )
         else:
+            # we merge user input with chemical ids retrieved by pubchem
             data = response["PropertyTable"]["Properties"][0] | chosen
 
-            self.chemical_ids.PUBCHEM_CID = data["CID"]
+            self.chemical_ids.pubchem_cid = data["CID"]
             self.chemical_ids.InChIKey = data["InChIKey"]
             self.chemical_ids.InChI = data["InChI"]
             self.chemical_ids.SMILES = data["IsomericSMILES"]
             self.chemical_ids.IUPAC = data["IUPACName"]
 
-            # Create molecular molfile
+            # Create Compound rdkit mol
             self.molecule = Chem.MolFromInchi(self.chemical_ids.InChI)
 
-    def _set_vendors_pubresponse(self, response):
+    def _set_vendors_pubresponse(self, response: Any) -> None:
+        """Set vendors information from data returned by Pubchem.
+
+        Currently we do nothing more than store the data, but more functionality should
+        be implemented in the future.
+
+        Parameters
+        ----------
+        response : Any
+            Contains the Pubchem REST API response in JSON format.
+
+        Returns
+        -------
+        None.
+
+        """
         self._vendors_data = response["SourceCategories"]["Categories"][0]["Sources"]
 
-    def _set_ghs_pubresponse(self, response):
+    def _set_ghs_pubresponse(self, response) -> None:
+        """Set GHS information from data returned by Pubchem.
+
+        The function takes Pubchem GHS data and stores it in one or more GHSReference
+        instances (depending on the number of records on Pubchem). Individual hazard phrases
+        are extracted and stored in a list. In case of data from
+        ECHA, the number of companies and notifications is also extracted. Finally, a GHS
+        score is calculated using the scheme defined in pubchemtools.ghs_ranking using, as
+        default, the regulatory profile GES002.
+
+        Parameters
+        ----------
+        response : Any
+            Contains the Pubchem REST API response in JSON format.
+
+        Returns
+        -------
+        None.
+
+        """
         # data from Pubchem
-        ref_sources = response["Record"]["Reference"]
-        ref_data = response["Record"]["Section"][0]["Section"][0]["Section"][0][
+        ref_sources: list[dict] = response["Record"]["Reference"]
+        ref_data: list[dict] = response["Record"]["Section"][0]["Section"][0]["Section"][0][
             "Information"
         ]
 
+        source: dict
+
+        # First, collect the referenced ids and source from the ["Record"]["Reference"] header
         for source in ref_sources:
-            ref_id = source["ReferenceNumber"]
-            source_name = source["SourceName"]
+            ref_id: int = source["ReferenceNumber"]
+            source_name: str = source["SourceName"]
             self.ghs_references[ref_id] = GHSReferences(
                 reference_id=ref_id, source_name=source_name
             )
 
+        # Then, loop through the H-phrases and link them to the ref_id of the source
+        ref: dict
+
         for ref in ref_data:
             ref_id = ref["ReferenceNumber"]
-            ref_name = ref["Name"]
+            ref_name: str = ref["Name"]
 
             if ref_name == "GHS Hazard Statements":
                 # print('\n \x1b[1;34;80mGHS Hazard Statements\x1b[1;34;0m \n')
-                hazard_codes = []
+                hazard_codes: list[str] = []
+                entry: dict[str, str]
                 for entry in ref["Value"]["StringWithMarkup"]:
-                    hphrase = entry["String"][0:4]
+                    hphrase: str = entry["String"][0:4]
                     if hphrase == "Not ":
                         continue
-                    elif hphrase == "Repo":
+                    if hphrase == "Repo":
                         self.ghs_references[ref_id].companies = int(
                             entry["String"].split()[8]
                         )
-                        hazard_codes = [None]
+                        print(self.chemical_ids)
+                        hazard_codes = ["Not Hazardous"]
                     else:
                         hazard_codes.append(entry["String"][0:4])
                 self.ghs_references[ref_id].hazard_codes = hazard_codes
             else:
+                # just ignore additional stuff like "Signal", Pictograms(s), etc
                 pass
 
+            # If the reference is from ECHA, lets extract companies and notification to
+            # identify the most reliable source
             if ref_name == "ECHA C&L Notifications Summary":
                 # print('\n \x1b[1;32;80mECHA HERE\x1b[1;32;0m \n')
                 # print(ref)
-                entry = ref["Value"]["StringWithMarkup"][0]["String"]
-                entry = entry.split()
-                self.ghs_references[ref_id].companies = int(entry[5])
-                self.ghs_references[ref_id].notifications = int(entry[8])
-        
-        self._calculate_ghs_ranking()
-                
-    def _calculate_ghs_ranking(self, ranking_profile=GES002_instance):
-        ranking_name = type(ranking_profile).__name__+"_GHS_ranking"
-        score = ranking_profile._rank(self.ghs_references)
-        
+                echa_entry: str = ref["Value"]["StringWithMarkup"][0]["String"]
+                splitted_entry: list[str] = echa_entry.split()
+                self.ghs_references[ref_id].companies = int(splitted_entry[5])
+                self.ghs_references[ref_id].notifications = int(splitted_entry[8])
+
+        self._calculate_ghs_ranking()  # at last...
+
+    def _calculate_ghs_ranking(self, ranking_profile: EmptyRanking = GES002_instance) -> None:
+        """Compute the compound GHS ranking.
+
+        Ranking is calculated using a user defined regulatory profile. Each profile contains
+        a score for each hazard phrase, and the final score of a compound is the sum of the
+        scores of all its h-phrases. The default ranking profile is GES002 which takes into
+        account only European Chemicals Agency (ECHA) references.
+
+        Parameters
+        ----------
+        ranking_profile : RegProfile, optional
+            Regulatory profile. The default is GES002_instance.
+
+        Returns
+        -------
+        None
+
+        """
+        ranking_name: str = type(ranking_profile).__name__+"_GHS_ranking"
+        score: int = ranking_profile.rank(self.ghs_references)
+
         self.add_property(ranking_name, score)
 
     def fetch_data(self):
@@ -320,27 +534,24 @@ class Compound:
 
     def add_property(self, property_name, property_value):
         if property_name not in self._user_properties.__dict__:
-            try:
-                self._user_properties.__setattr__(
-                    property_name, property_value, type(self)
-                )
-                for library in self._linked_libraries:
-                    library._register_property(property_name)
-            except Exception as e:
-                print(str(e))
+            self._user_properties.__setattr__(
+                property_name, property_value, type(self)
+            )
+            for library in self._linked_libraries:
+                library._register_property(property_name)
         else:
-            self._user_properties.__setattr__(property_name, property_value, type(self))
+            self._user_properties.__setattr__(
+                property_name, property_value, type(self))
 
     def __setattr__(self, name, value):
         if name not in self.__dict__ and name not in self.builtin_properties:
             raise AttributeError(
-                f"Assigning a property with a = operator is forbidden. Please use the add_property instance method instead. "
+                "Assigning a property with a = operator is forbidden. Please use the add_property instance method instead. "
                 + "\n"
                 + f' --> compound.add_property("{name}", {value})',
             )
-            return
-        else:
-            super().__setattr__(name, value)
+
+        super().__setattr__(name, value)
 
 
 class Library:
@@ -356,7 +567,7 @@ class Library:
         for compound in self.compounds_list:
             compound._linked_libraries.append(self)
 
-    def fetch_data(self, parallel=True, attempts=3):
+    def fetch_data(self, attempts=3):
         # for compound in self.compounds_list:
         #     # using function as dict key to pair url request and setter!
         #     for url_fetcher, setter in compound._fetch_pairs.items():
@@ -382,7 +593,7 @@ class Library:
             try:
                 compound._set_chemical_ids_pubresponse(data[key])
                 compound.compound_in_PUBCHEM = True
-            except:
+            except KeyError:
                 compound.compound_in_PUBCHEM = False
 
         print("\nFetching safety and vendors data")
@@ -401,38 +612,37 @@ class Library:
                 try:
                     response = data[key]
                     setter(response)
-                except:
+                except KeyError:
                     pass
-        print(f"Elapsed: ", time.time() - initial_time)
+        print("Elapsed: ", time.time() - initial_time)
 
     def add(self, compounds_list):
         if type(compounds_list) is not list:
             raise TypeError(
                 f"add method requires a list as input, while {type(compounds_list)} was provided."
             )
-            return
 
         self.compounds_list.extend(compounds_list)
 
         for compound in compounds_list:
             compound._linked_libraries.append(self)
-            
+
             for user_property in compound._user_properties.__dict__:
                 self._register_property(user_property)
-                
 
     def read(self, sdf_filepath):
         suppl = Chem.SDMolSupplier(sdf_filepath)
 
         for mol in suppl:
             self.compounds_list.append(Compound(rdkitmol=mol, autofetch=False))
-            
+
         for compound in self.compounds_list:
             compound._linked_libraries.append(self)
-            
-        
 
     def save(self, filename, file_format="sdf"):
+        if file_format != "sdf":
+            raise NotImplementedError("No other file format other than SDF is supported at"
+                                      + "the current time")
 
         sdf_out = Chem.SDWriter(filename)
 
@@ -456,11 +666,8 @@ class Library:
                     property_value = compound._user_properties.__getattribute__(
                         property_name
                     )
-                except AttributeError as e:
-                    # print("Attribute error: ", str(e))
+                except AttributeError:
                     property_value = None
-                except Exception as e:
-                    print(str(e))
 
                 molecule.SetProp(property_name, str(property_value))
 
