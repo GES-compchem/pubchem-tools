@@ -9,7 +9,9 @@ Created on Mon Mar 28 11:53:11 2022
 import copy
 from dataclasses import dataclass
 import time
+import datetime
 from typing import Any, Type, Callable, Optional
+from collections import KeysView  # for type-hinting purpose only
 from pubchemtools.communication import HTTP_request, PUBCHEM_load_balancer
 from pubchemtools.ghs_ranking import EmptyRanking, GES002
 import rdkit
@@ -652,41 +654,80 @@ class Compound:
 
 
 class Library:
-    def __init__(self, compounds_list=None):
+    """Library for managing multiple compounds objects.
 
-        self._registered_properties = set()
+    The library class allows the user to store data of multiple Compoud
+    objects e.g. retrieving PUBCHEM information for all objects at once
+    and to read or export libraries of compound from or to file.
+
+    Parameters
+    ----------
+    compounds_list : list, default None
+        A list containing Compounds objects.
+
+    Attributes
+    ----------
+    compounds_list : list
+        A list containing Compounds objects.
+
+    """
+
+    def __init__(self, compounds_list: Optional[list[Compound]] = None) -> None:
+        """Initialize Library object."""
+        self._registered_properties: set[str] = set()
 
         if compounds_list is None:
-            self.compounds_list = []
+            self.compounds_list = []  # list as default argumetn wreaks havoc
         else:
             self.compounds_list = compounds_list
 
         for compound in self.compounds_list:
             compound._linked_libraries.append(self)
 
-    def fetch_data(self, attempts=3):
+    def fetch_data(self, attempts: int = 3) -> None:
+        """Retrieve compounds data from PUBCHEM database.
+
+        The function creates all urls to retrieve chemical IDs, GHS and vendors
+        data from PUBCHEM, then feed them to the PUBCHEM_load_balancer function
+        from communication, and then sets the properties to each Compound
+        object.
+
+
+        Parameters
+        ----------
+        attempts : TYPE, optional
+            Number of attempts to be tried by PUBCHEM_load_balancer in case
+            communication with PUGREST fails. The default is 3.
+
+        Returns
+        -------
+        None.
+
+        """
         # for compound in self.compounds_list:
         #     # using function as dict key to pair url request and setter!
         #     for url_fetcher, setter in compound._fetch_pairs.items():
         #         url, post = url_fetcher()
         #         response = HTTP_request(url, post)
         #         setter(response)
-        initial_time = time.time()
+        initial_time: float = time.time()
 
-        url_requests = []
+        url_requests: list[Callable] = []
 
         print("Fetching chemical IDs")
         # first, we need a CID...
-        cid_requests = []
+        cid_requests: list[Callable] = []
         for compound in self.compounds_list:
             cid_requests.append(compound._chemical_ids_url)
 
         # lets grab the chemical IDs from pubchem...
-        data = PUBCHEM_load_balancer(cid_requests, attempts)
+        # data contains a dict of JSONs
+        data: dict[Callable, Any] = PUBCHEM_load_balancer(cid_requests, attempts)
 
-        # ... and set them in each compound object
+        # ... and set them in each compound object. If no InChIKey is found
+        # it means no PUBCHEM record was found, therefore a flag is set.
         for compound in self.compounds_list:
-            key = compound._chemical_ids_url
+            key: Callable = compound._chemical_ids_url
             try:
                 compound._set_chemical_ids_pubresponse(data[key])
                 compound.compound_in_PUBCHEM = True
@@ -694,7 +735,8 @@ class Library:
                 compound.compound_in_PUBCHEM = False
 
         print("\nFetching safety and vendors data")
-        # Fetch other data
+        url_fetcher: Callable
+
         for compound in self.compounds_list:
             for url_fetcher in compound._fetch_pairs.keys():
                 if compound.compound_in_PUBCHEM:
@@ -702,18 +744,40 @@ class Library:
 
         data = PUBCHEM_load_balancer(url_requests, attempts)
 
+        # relies on getter/setter dictionary in each compound object to assign
+        # the output from PUBCHEM_load_balancer to the correct function.
         for compound in self.compounds_list:
-            keys = compound._fetch_pairs.keys()
+            keys: KeysView = compound._fetch_pairs.keys()
             for key in keys:
                 setter = compound._fetch_pairs[key]
                 try:
-                    response = data[key]
+                    response: Any = data[key]  # JSON
                     setter(response)
                 except KeyError:
                     pass
         print("Elapsed: ", time.time() - initial_time)
 
-    def add(self, compounds_list):
+    def add(self, compounds_list: list[Compound]) -> None:
+        """Add a list of Compound objects to the library.
+
+        The function appends a list of Compound objects to the library and
+        register them to keep track of the properties.
+
+        Parameters
+        ----------
+        compounds_list : list[Compound]
+            A list of Compound objects.
+
+        Raises
+        ------
+        TypeError
+            Raised if anything else than a list of Compound objects is provided.
+
+        Returns
+        -------
+        None
+
+        """
         if type(compounds_list) is not list:
             raise TypeError(
                 f"add method requires a list as input, while {type(compounds_list)} was provided."
@@ -721,14 +785,35 @@ class Library:
 
         self.compounds_list.extend(compounds_list)
 
+        compound: Compound
+        user_property: str
+
         for compound in compounds_list:
             compound._linked_libraries.append(self)
 
             for user_property in compound._user_properties.__dict__:
                 self._register_property(user_property)
 
-    def read(self, sdf_filepath):
-        suppl = Chem.SDMolSupplier(sdf_filepath)
+    def read(self, sdf_filepath: str) -> None:
+        """Load an sdf file into a library.
+
+        Molecule files are loaded into a Library object. Properties are
+        discarded.
+
+        Parameters
+        ----------
+        sdf_filepath : str
+            Path of the sdf file.
+
+        Returns
+        -------
+        None
+
+        """
+        suppl: Chem.SDMolSupplier = Chem.SDMolSupplier(sdf_filepath)
+
+        mol: rdkit.Chem.rdchem.Mol
+        compound: Compound
 
         for mol in suppl:
             self.compounds_list.append(Compound(rdkitmol=mol, autofetch=False))
@@ -736,19 +821,41 @@ class Library:
         for compound in self.compounds_list:
             compound._linked_libraries.append(self)
 
-    def save(self, filename, file_format="sdf"):
+    def save(self, filename: str, file_format: str = "sdf") -> None:
+        """Export the library to an SDF file.
+
+        Compound objects and their properties are exported to an SDF file.
+
+        Parameters
+        ----------
+        filename : str
+            Name of the output file.
+        file_format : str, optional
+            File format for the output file. The default is "sdf".
+
+        Raises
+        ------
+        NotImplementedError
+            Raised in case a different file format than sdf is requested.
+
+        Returns
+        -------
+        None
+        """
         if file_format != "sdf":
             raise NotImplementedError("No other file format other than SDF is supported at"
                                       + "the current time")
 
-        sdf_out = Chem.SDWriter(filename)
+        sdf_out: Chem.SDWriter = Chem.SDWriter(filename)
 
         # output_molecules = []
+
+        compound: Compound
 
         for compound in self.compounds_list:
             # avoids having replicated data in memory...
             if compound.molecule is not None:
-                molecule = copy.copy(compound.molecule)
+                molecule: rdkit.Chem.rdchem.Mol = copy.copy(compound.molecule)
 
             else:
                 molecule = Chem.rdchem.Mol()
@@ -758,9 +865,11 @@ class Library:
             molecule.SetProp("SMILES", str(compound.chemical_ids.SMILES))
             molecule.SetProp("IUPAC", str(compound.chemical_ids.IUPAC))
 
+            property_name: str
+
             for property_name in self._registered_properties:
                 try:
-                    property_value = compound._user_properties.__getattribute__(
+                    property_value: Any = compound._user_properties.__getattribute__(
                         property_name
                     )
                 except AttributeError:
@@ -772,16 +881,47 @@ class Library:
 
         sdf_out.close()
 
-    def _register_property(self, user_property):
+    def _register_property(self, user_property: str) -> None:
+        """Add a new user property to the registered properties of the library.
+
+        Registered properties will be output to file once exported to SDF.
+
+        Parameters
+        ----------
+        user_property : str
+            Name of the user property to be registered.
+
+        Returns
+        -------
+        None
+        """
         self._registered_properties.add(user_property)
 
     @property
-    def in_pubchem(self):
+    def in_pubchem(self) -> None:
+        """Yield only compounds that were found on PUBCHEM.
+
+        Yields
+        ------
+        compound: Compound
+            Compound object contained in the library.
+
+        """
+        compound: Compound
+
         for compound in self.compounds_list:
             if compound.compound_in_PUBCHEM:
                 yield compound
 
-    def __iter__(self):
+    def __iter__(self) -> None:
+        """Yield compounds of the library.
+
+        Yields
+        ------
+        compound: Compound
+            Compound object contained in the library.
+
+        """
         for compound in self.compounds_list:
             yield compound
 

@@ -8,7 +8,8 @@ Created on Mon Mar 28 12:22:38 2022
 
 import requests
 from requests.exceptions import HTTPError
-import threading, queue
+import threading
+import queue
 import time
 
 import os
@@ -16,6 +17,8 @@ import os
 session = requests.Session()
 
 # %% HTTP Catch errors and reuse session in HTTP request
+
+
 def HTTP_request(url, post=None, other=None, attempts=3, queue=None):
     # if session is None:
     #     session = requests.Session()
@@ -25,7 +28,7 @@ def HTTP_request(url, post=None, other=None, attempts=3, queue=None):
         try:
             response = session.post(url, data=post, timeout=2)
             # If the response was successful, no Exception will be raised
-            #print(response.headers)
+            # print(response.headers)
             response.raise_for_status()
 
         # DEV: should be completed with the full error list from PUBCHEM
@@ -38,7 +41,8 @@ def HTTP_request(url, post=None, other=None, attempts=3, queue=None):
                 # print("PUGREST.NotFound")
                 return None
             elif "PUGREST.ServerBusy" in str(http_err):
-                print(f"\n PUBCHEM HTTP 503 error \"PUGREST.ServerBusy\" for url:\n  {url} \n Retrying: {i}/{attempts} attempts\n")
+                print(
+                    f"\n PUBCHEM HTTP 503 error \"PUGREST.ServerBusy\" for url:\n  {url} \n Retrying: {i}/{attempts} attempts\n")
                 time.sleep(1)
             else:
                 print(str(http_err))
@@ -98,7 +102,7 @@ def PUBCHEM_load_balancer(url_requests_list, total_urls=0, attempts=3):
 
     while url_requests_list:
         new_threads = []  # group threads to be joined
-        for thread_num in range(5):  # create 10 workers per second
+        for thread_num in range(5):  # create circa 5 workers per second
             if within_pubchem_limits(url_requests_list, time.time()):
                 # try:
                 #     url_request = url_requests_queue.get_nowait()
@@ -112,7 +116,8 @@ def PUBCHEM_load_balancer(url_requests_list, total_urls=0, attempts=3):
                 url, post = url_request()
                 # print("url: ", url)
                 worker = threading.Thread(
-                    target=HTTP_request, args=[url, post, url_request, attempts, results_queue]
+                    target=HTTP_request, args=[url, post,
+                                               url_request, attempts, results_queue]
                 )
                 new_threads.append(worker)
                 worker.start()
