@@ -36,6 +36,10 @@ class ChemicalIDs:
         Standard IUPAC chemical name of the compound. The default is None.
     pubchem_cid : int
         Pubchem Compound IDentifier (CID)
+    sdf : str, optional
+        SDF string containing the molecular structure    
+    mol : str, optional
+        MOL string containing the molecular structure
     """
 
     InChIKey: Optional[str] = None
@@ -251,15 +255,12 @@ class Compound:
             self.molecule = Chem.MolFromMolFile(mol)
         if rdkitmol is not None:
             self.molecule = rdkitmol
-
         if any([InChIKey, InChI, IUPAC, SMILES, sdf, mol, rdkitmol]):
             self.chemical_ids = ChemicalIDs(
-                InChI=InChI, InChIKey=InChIKey, IUPAC=IUPAC, SMILES=SMILES
+                InChI=InChI, InChIKey=InChIKey, IUPAC=IUPAC, SMILES=SMILES,
             )
         else:
-            raise ValueError(
-                "Compound object initialization requires at least one argument"
-            )
+            raise ValueError("Compound object initialization requires at least one argument")
 
         # Couples functions that supply Pubchem url to functions that set the data returned
         # by Pubchem. This allow to fetch Pubchem data all in one go and worry about
@@ -273,8 +274,8 @@ class Compound:
             self.fetch_data()
 
         # Without an InChIKey (or other chemical IDs) Pubchem search won't work
-        if self.molecule:
-            self.chemical_ids.InChIKey = Chem.MolToInchiKey(self.molecule)
+        # if self.molecule:
+        #     self.chemical_ids.InChIKey = Chem.MolToInchiKey(self.molecule)
 
     def _chemical_ids_url(self) -> tuple[str, Optional[str]]:
         """Generate Pubchem REST url to retrieve InChI,InChiKey, SMILES,IUPACName.
@@ -299,6 +300,10 @@ class Compound:
             url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/{self.chemical_ids.SMILES}/property/InChIKey,InChI,IUPACName/JSON"
         elif self.chemical_ids.IUPAC is not None:
             url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/iupacname/{self.chemical_ids.IUPAC}/property/InChIKey,InChI,SMILES/JSON"
+        else:
+            url = "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/sdf/property/InChI,InChIKey,IsomericSMILES,IUPACName/JSON"
+            molblock = Chem.MolToMolBlock(self.molecule)
+            post = {"sdf": molblock}
 
         return url, post
 
@@ -350,7 +355,7 @@ class Compound:
 
         """
         identifiers: dict[str, str] = self.chemical_ids.__dict__
-        chosen: dict[str, str]
+        chosen: dict[str, str] = {}
 
         # relies on definition order of dict - may be unreliable depending
         # on python base library implementation
@@ -364,8 +369,8 @@ class Compound:
 
         if response is None:
             print(
-                f"No Chemical IDs were found for {list(chosen.keys())[0]}: " +
-                "{list(chosen.values())[0]}"
+                f"No Chemical IDs were found for {list(chosen.keys())[0]}: "
+                + "{list(chosen.values())[0]}"
             )
         else:
             # we merge user input with chemical ids retrieved by pubchem
@@ -450,9 +455,7 @@ class Compound:
                     if hphrase == "Not ":
                         continue
                     if hphrase == "Repo":
-                        self.ghs_references[ref_id].companies = int(
-                            entry["String"].split()[8]
-                        )
+                        self.ghs_references[ref_id].companies = int(entry["String"].split()[8])
                         print(self.chemical_ids)
                         hazard_codes = ["Not Hazardous"]
                     else:
@@ -492,7 +495,7 @@ class Compound:
         None
 
         """
-        ranking_name: str = type(ranking_profile).__name__+"_GHS_ranking"
+        ranking_name: str = type(ranking_profile).__name__ + "_GHS_ranking"
         score: int = ranking_profile.rank(self.ghs_references)
 
         self.add_property(ranking_name, score)
@@ -570,8 +573,9 @@ class Compound:
         """
         # DEV: should add restrains to arguments for file_format
         if self.molecule is None:
-            raise UnboundLocalError("No molecule object is present in Compound. " +
-                                    "Cannot save to file.")
+            raise UnboundLocalError(
+                "No molecule object is present in Compound. " + "Cannot save to file."
+            )
 
         writer: Chem.SDWriter = Chem.SDWriter(filename + "." + file_format)
 
@@ -604,9 +608,7 @@ class Compound:
 
         """
         if property_name not in self._user_properties.__dict__:
-            self._user_properties.__setattr__(
-                property_name, property_value, type(self)
-            )
+            self._user_properties.__setattr__(property_name, property_value, type(self))
 
             # after adding the property to the compound instance, register it to all the
             # libraries containing the compound
@@ -615,8 +617,7 @@ class Compound:
                 library._register_property(property_name)
         else:
             # if the property already exists in the Compound instance, then modify its value
-            self._user_properties.__setattr__(
-                property_name, property_value, type(self))
+            self._user_properties.__setattr__(property_name, property_value, type(self))
 
     def __setattr__(self, name: str, value: Any) -> None:
         """Prevent user to edit Compound instance properties.
@@ -843,8 +844,9 @@ class Library:
         None
         """
         if file_format != "sdf":
-            raise NotImplementedError("No other file format other than SDF is supported at"
-                                      + "the current time")
+            raise NotImplementedError(
+                "No other file format other than SDF is supported at" + "the current time"
+            )
 
         sdf_out: Chem.SDWriter = Chem.SDWriter(filename)
 
@@ -869,9 +871,7 @@ class Library:
 
             for property_name in self._registered_properties:
                 try:
-                    property_value: Any = compound._user_properties.__getattribute__(
-                        property_name
-                    )
+                    property_value: Any = compound._user_properties.__getattribute__(property_name)
                 except AttributeError:
                     property_value = None
 
