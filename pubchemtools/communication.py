@@ -40,17 +40,21 @@ def HTTP_request(url, post=None, other=None, attempts=3, queue=None):
             elif "PUGREST.NotFound" in str(http_err):
                 # print("PUGREST.NotFound")
                 return None
+
             elif "PUGREST.ServerBusy" in str(http_err):
                 print(
-                    f"\n PUBCHEM HTTP 503 error \"PUGREST.ServerBusy\" for url:\n  {url} \n Retrying: {i}/{attempts} attempts\n")
+                    f'\n PUBCHEM HTTP 503 error "PUGREST.ServerBusy" for url:\n  {url} \n Retrying: {i}/{attempts} attempts\n'
+                )
                 time.sleep(1)
-            else:
-                print(str(http_err))
+                continue
+
+            print(str(http_err))
             break
+
             # print(f"HTTP error occurred: {http_err}")  # Python 3.6
         except Exception as err:
             print(f"Other error occurred: {err}")  # Python 3.6
-            #print(f"\n Connection error. Retrying {other} - Attempt {i}/3")
+            # print(f"\n Connection error. Retrying {other} - Attempt {i}/3")
             time.sleep(1)
         else:
             if queue is not None:
@@ -116,8 +120,7 @@ def PUBCHEM_load_balancer(url_requests_list, total_urls=0, attempts=3):
                 url, post = url_request()
                 # print("url: ", url)
                 worker = threading.Thread(
-                    target=HTTP_request, args=[url, post,
-                                               url_request, attempts, results_queue]
+                    target=HTTP_request, args=[url, post, url_request, attempts, results_queue]
                 )
                 new_threads.append(worker)
                 worker.start()
