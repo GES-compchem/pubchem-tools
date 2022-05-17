@@ -456,7 +456,6 @@ class Compound:
                         continue
                     if hphrase == "Repo":
                         self.ghs_references[ref_id].companies = int(entry["String"].split()[8])
-                        print(self.chemical_ids)
                         hazard_codes = ["Not Hazardous"]
                     else:
                         hazard_codes.append(entry["String"][0:4])
