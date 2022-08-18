@@ -27,17 +27,19 @@ class ChemicalIDs:
     Attributes
     ----------
     InChIKey : str, optional
-        InChI-Key associated to the compound. The default is None.
+        InChI-Key associated with the compound. The default is None.
     InChI : str, optional
         InChI representation of the compound. The default is None.
     SMILES : str, optional
         SMILES representation of the compound. The default is None.
     IUPAC : str, optional
         Standard IUPAC chemical name of the compound. The default is None.
+    name : str, optional
+        Traditional (or other) chemical name of the compound. The default is None.
     pubchem_cid : int
         Pubchem Compound IDentifier (CID)
     sdf : str, optional
-        SDF string containing the molecular structure    
+        SDF string containing the molecular structure
     mol : str, optional
         MOL string containing the molecular structure
     """
@@ -45,6 +47,7 @@ class ChemicalIDs:
     InChIKey: Optional[str] = None
     InChI: Optional[str] = None
     IUPAC: Optional[str] = None
+    name: Optional[str] = None
     SMILES: Optional[str] = None
     pubchem_cid: Optional[int] = None
 
@@ -157,13 +160,15 @@ class Compound:
     Parameters
     ----------
     InChIKey : str, optional
-        InChI-Key associated to the compound. The default is None.
+        InChI-Key associated with the compound. The default is None.
     InChI : str, optional
         InChI representation of the compound. The default is None.
     SMILES : str, optional
         SMILES representation of the compound. The default is None.
     IUPAC : str, optional
         Standard IUPAC chemical name of the compound. The default is None.
+    name : str, optional
+        Traditional (or other) chemical name of the compound. The default is None.
     sdf : str, optional
         Filepath of an SDF file containing a single structure. If an SDF
         file with multiple molecules is provided, only the first one will
@@ -230,6 +235,7 @@ class Compound:
         InChI: Optional[str] = None,
         SMILES: Optional[str] = None,
         IUPAC: Optional[str] = None,
+        name: Optional[str] = None,
         sdf: Optional[str] = None,
         mol: Optional[str] = None,
         rdkitmol: Optional[rdkit.Chem.rdchem.Mol] = None,
@@ -255,12 +261,18 @@ class Compound:
             self.molecule = Chem.MolFromMolFile(mol)
         if rdkitmol is not None:
             self.molecule = rdkitmol
-        if any([InChIKey, InChI, IUPAC, SMILES, sdf, mol, rdkitmol]):
+        if any([InChIKey, InChI, IUPAC, name, SMILES, sdf, mol, rdkitmol]):
             self.chemical_ids = ChemicalIDs(
-                InChI=InChI, InChIKey=InChIKey, IUPAC=IUPAC, SMILES=SMILES,
+                InChI=InChI,
+                InChIKey=InChIKey,
+                IUPAC=IUPAC,
+                name=name,
+                SMILES=SMILES,
             )
         else:
-            raise ValueError("Compound object initialization requires at least one argument")
+            raise ValueError(
+                "Compound object initialization requires at least one argument"
+            )
 
         # Couples functions that supply Pubchem url to functions that set the data returned
         # by Pubchem. This allow to fetch Pubchem data all in one go and worry about
@@ -299,7 +311,9 @@ class Compound:
         elif self.chemical_ids.SMILES is not None:
             url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/{self.chemical_ids.SMILES}/property/InChIKey,InChI,IUPACName/JSON"
         elif self.chemical_ids.IUPAC is not None:
-            url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/iupacname/{self.chemical_ids.IUPAC}/property/InChIKey,InChI,SMILES/JSON"
+            url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/iupacname/{self.chemical_ids.IUPAC}/property/InChIKey,InChI,IsomericSMILES/JSON"
+        elif self.chemical_ids.name is not None:
+            url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{self.chemical_ids.name}/property/InChIKey,InChI,IsomericSMILES,IUPACName/JSON"
         else:
             url = "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/sdf/property/InChI,InChIKey,IsomericSMILES,IUPACName/JSON"
             molblock = Chem.MolToMolBlock(self.molecule)
@@ -455,7 +469,9 @@ class Compound:
                     if hphrase == "Not ":
                         continue
                     if hphrase == "Repo":
-                        self.ghs_references[ref_id].companies = int(entry["String"].split()[8])
+                        self.ghs_references[ref_id].companies = int(
+                            entry["String"].split()[8]
+                        )
                         hazard_codes = ["Not Hazardous"]
                     else:
                         hazard_codes.append(entry["String"][0:4])
@@ -870,7 +886,9 @@ class Library:
 
             for property_name in self._registered_properties:
                 try:
-                    property_value: Any = compound._user_properties.__getattribute__(property_name)
+                    property_value: Any = compound._user_properties.__getattribute__(
+                        property_name
+                    )
                 except AttributeError:
                     property_value = None
 
