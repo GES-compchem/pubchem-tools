@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import time
 import datetime
 from typing import Any, Type, Callable, Optional
-from collections import KeysView  # for type-hinting purpose only
+from collections.abc import KeysView  # for type-hinting purpose only
 from pubchemtools.communication import HTTP_request, PUBCHEM_load_balancer
 from pubchemtools.ghs_ranking import EmptyRanking, GES002
 import rdkit
